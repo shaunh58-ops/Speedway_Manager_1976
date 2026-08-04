@@ -1,4 +1,3 @@
-```python
 """
 V0.3.1 Database Validation
 Speedway Manager 1976
