@@ -3,430 +3,285 @@ Speedway Game Engine
 
 Logger Module
 
-Version: 1.0
+Version: 0.3.1
 
-Professional logging system
-for game events and diagnostics.
-
+Professional logging system for
+game events and diagnostics.
 """
-
 
 from __future__ import annotations
 
 import logging
 import os
-
 from datetime import datetime
 from typing import Optional
 
 
-
-# ==========================================================
-# LOGGER MANAGER
-# ==========================================================
-
-
 class GameLogger:
-
+    """Central logging system for the Speedway Manager engine."""
 
     def __init__(
-            self,
-            name="SpeedwayEngine",
-            log_directory="logs",
-            level=logging.INFO
+        self,
+        name: str = "SpeedwayEngine",
+        log_directory: str = "logs",
+        level: int = logging.INFO,
     ):
-
-
         self.name = name
-
         self.log_directory = log_directory
 
-
         os.makedirs(
-
-            log_directory,
-
-            exist_ok=True
-
+            self.log_directory,
+            exist_ok=True,
         )
-
 
         filename = (
-
-            datetime.now()
-
-            .strftime(
-
-                "%Y-%m-%d"
-
-            )
-
-            +
-
-            "_speedway.log"
-
+            datetime.now().strftime("%Y-%m-%d")
+            + "_speedway.log"
         )
-
 
         self.log_file = os.path.join(
-
-            log_directory,
-
-            filename
-
+            self.log_directory,
+            filename,
         )
-
 
         self.logger = logging.getLogger(
-
-            name
-
+            self.name
         )
 
-
-        self.logger.setLevel(
-
-            level
-
-        )
-
+        self.logger.setLevel(level)
 
         if not self.logger.handlers:
-
-
             self._configure()
 
-
-
-    # ======================================================
-    # CONFIGURE LOGGER
-    # ======================================================
-
-
     def _configure(self):
-
+        """Configure file and console logging."""
 
         formatter = logging.Formatter(
-
             "%(asctime)s | %(levelname)s | %(message)s"
-
         )
-
 
         file_handler = logging.FileHandler(
-
             self.log_file,
-
-            encoding="utf-8"
-
+            encoding="utf-8",
         )
-
 
         file_handler.setFormatter(
-
             formatter
-
         )
-
 
         console_handler = logging.StreamHandler()
 
-
         console_handler.setFormatter(
-
             formatter
-
         )
 
-
         self.logger.addHandler(
-
             file_handler
-
         )
-
 
         self.logger.addHandler(
-
             console_handler
-
         )
 
-
-
-    # ======================================================
+    # --------------------------------------------------
     # BASIC LOGGING
-    ======================================================
-
+    # --------------------------------------------------
 
     def debug(
-            self,
-            message
+        self,
+        message,
     ):
-
-
-        self.logger.debug(
-
-            message
-
-        )
-
-
+        self.logger.debug(message)
 
     def info(
-            self,
-            message
+        self,
+        message,
+        *args,
     ):
-
-
         self.logger.info(
-
-            message
-
+            message,
+            *args,
         )
-
-
 
     def warning(
-            self,
-            message
+        self,
+        message,
+        *args,
     ):
-
-
         self.logger.warning(
-
-            message
-
+            message,
+            *args,
         )
-
-
 
     def error(
-            self,
-            message
+        self,
+        message,
+        *args,
     ):
-
-
         self.logger.error(
-
-            message
-
+            message,
+            *args,
         )
-
-
 
     def critical(
-            self,
-            message
+        self,
+        message,
+        *args,
     ):
-
-
         self.logger.critical(
-
-            message
-
+            message,
+            *args,
         )
 
-
-
-    # ======================================================
+    # --------------------------------------------------
     # GAME EVENTS
-    ======================================================
-
+    # --------------------------------------------------
 
     def race_event(
-            self,
-            event
+        self,
+        event,
     ):
-
-
         self.info(
-
-            f"RACE EVENT: {event}"
-
+            "RACE EVENT: %s",
+            event,
         )
-
-
 
     def transfer_event(
-            self,
-            event
+        self,
+        event,
     ):
-
-
         self.info(
-
-            f"TRANSFER: {event}"
-
+            "TRANSFER: %s",
+            event,
         )
-
-
 
     def injury_event(
-            self,
-            event
+        self,
+        event,
     ):
-
-
         self.warning(
-
-            f"INJURY: {event}"
-
+            "INJURY: %s",
+            event,
         )
-
-
 
     def financial_event(
-            self,
-            event
+        self,
+        event,
     ):
-
-
         self.info(
-
-            f"FINANCE: {event}"
-
+            "FINANCE: %s",
+            event,
         )
 
-
-
-    # ======================================================
+    # --------------------------------------------------
     # DATABASE EVENTS
-    ======================================================
-
+    # --------------------------------------------------
 
     def database_error(
-            self,
-            database,
-            issue
+        self,
+        database,
+        issue,
     ):
-
-
         self.error(
-
-            f"DATABASE ERROR | {database}: {issue}"
-
+            "DATABASE ERROR | %s: %s",
+            database,
+            issue,
         )
-
-
 
     def database_warning(
-            self,
-            database,
-            issue
+        self,
+        database,
+        issue,
     ):
-
-
         self.warning(
-
-            f"DATABASE WARNING | {database}: {issue}"
-
+            "DATABASE WARNING | %s: %s",
+            database,
+            issue,
         )
 
-
-
-    # ======================================================
+    # --------------------------------------------------
     # SAVE GAME EVENTS
-    ======================================================
-
+    # --------------------------------------------------
 
     def save_event(
-            self,
-            filename
+        self,
+        filename,
     ):
-
-
         self.info(
-
-            f"GAME SAVED: {filename}"
-
+            "GAME SAVED: %s",
+            filename,
         )
-
-
 
     def load_event(
-            self,
-            filename
+        self,
+        filename,
     ):
-
-
         self.info(
-
-            f"GAME LOADED: {filename}"
-
+            "GAME LOADED: %s",
+            filename,
         )
 
-
-
-    # ======================================================
+    # --------------------------------------------------
     # EXCEPTION LOGGER
-    ======================================================
-
+    # --------------------------------------------------
 
     def exception(
-            self,
-            message,
-            error: Optional[Exception] = None
+        self,
+        message,
+        error: Optional[Exception] = None,
     ):
-
-
-        if error:
-
-
+        if error is not None:
             self.logger.exception(
-
-                f"{message}: {error}"
-
+                "%s: %s",
+                message,
+                error,
             )
-
-
         else:
-
-
             self.logger.exception(
-
                 message
-
             )
 
 
-
-# ==========================================================
+# --------------------------------------------------
 # GLOBAL LOGGER INSTANCE
-# ==========================================================
-
+# --------------------------------------------------
 
 game_logger = GameLogger()
 
 
+# --------------------------------------------------
+# COMPATIBILITY FUNCTION
+# --------------------------------------------------
 
-# ==========================================================
+def get_logger(
+    name: str = "SpeedwayEngine",
+):
+    """
+    Return a standard Python logger.
+
+    Database managers use this function so that
+    existing engine code remains compatible.
+    """
+
+    return logging.getLogger(name)
+
+
+# --------------------------------------------------
 # TEST MODULE
-# ==========================================================
-
+# --------------------------------------------------
 
 if __name__ == "__main__":
 
-
     logger = GameLogger()
 
-
     logger.info(
-
         "Speedway Engine Started"
-
     )
-
 
     logger.race_event(
-
         "1976 British League Opening Fixture"
-
     )
 
-
     logger.warning(
-
         "Weather conditions deteriorating"
-
     )

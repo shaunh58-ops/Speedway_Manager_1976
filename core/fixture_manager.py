@@ -1,489 +1,490 @@
 """
-Speedway Game Engine
+British League Speedway Manager
+Fixture Database Manager
 
-Fixture Manager Module
+Version: 0.3.1
 
-Version: 1.0
-
-Controls Speedway fixture schedules.
-
-Features:
-
-- Fixture database import
-- Fixture creation
-- Calendar management
-- Postponements
-- Re-arranged meetings
-- Fixture tracking
-
+Loads and manages the historical 1976 fixture database.
+Aligned with the actual fixtures_1976.json schema.
 """
 
+from __future__ import annotations
 
-from typing import Dict, List, Optional
+import json
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
 
+from core.logger import get_logger
 
-from models import Fixture
-
-
-
-class FixtureManager:
-
-
-
-    def __init__(self):
+log = get_logger("FixtureDatabaseManager")
 
 
-        self.fixtures: Dict[int, Fixture] = {}
+@dataclass
+class Fixture:
+    """A historical Speedway fixture."""
+
+    fixture_id: str
+    meeting_date: str
+    home_team: str
+    away_team: str
+    meeting_type: str
+
+    # Runtime status
+    completed: bool = False
+    home_score: int = 0
+    away_score: int = 0
+
+    @property
+    def date(self) -> str:
+        """Compatibility alias for meeting_date."""
+        return self.meeting_date
+
+    @property
+    def competition(self) -> str:
+        """Compatibility alias for meeting_type."""
+        return self.meeting_type
 
 
-        self.postponed = []
+class FixtureDatabaseManager:
+    """Load and manage the historical 1976 fixture database."""
 
-
-        self.completed = []
-
-
-
-    # =========================================================
-    # FIXTURE CREATION
-    # =========================================================
-
-
-    def load_fixtures(
-            self,
-            fixture_data: List[dict]
+    def __init__(
+        self,
+        database_path=None
     ):
 
+        self.database_path = (
+            Path(database_path)
+            if database_path
+            else None
+        )
 
-        """
-        Convert JSON fixture records
-        into Fixture objects.
-        """
+        self.fixtures: List[Fixture] = []
 
+    # --------------------------------------------------
+    # DATABASE LOADING
+    # --------------------------------------------------
 
-        for data in fixture_data:
+    def load_database(
+        self,
+        file_path=None
+    ):
+        """Load fixtures_1976.json."""
 
+        path_value = (
+            file_path
+            or self.database_path
+        )
 
-            fixture = Fixture(
-
-                id=data.get(
-                    "id"
-                ),
-
-                season=data.get(
-                    "season",
-                    1976
-                ),
-
-                round_number=data.get(
-                    "round",
-                    1
-                ),
-
-                home_club_id=data.get(
-                    "home_club_id"
-                ),
-
-                away_club_id=data.get(
-                    "away_club_id"
-                ),
-
-                venue_id=data.get(
-                    "venue_id"
-                )
-
+        if path_value is None:
+            raise ValueError(
+                "No fixture database path was supplied"
             )
 
+        path = Path(path_value)
 
-            self.fixtures[fixture.id] = fixture
+        if not path.exists():
+            raise FileNotFoundError(path)
 
+        with path.open(
+            "r",
+            encoding="utf-8"
+        ) as f:
 
+            records = json.load(f)
 
-        return len(
-            self.fixtures
-        )
+        if not isinstance(records, list):
+            raise ValueError(
+                "Fixture database root must be a JSON list"
+            )
 
+        self.fixtures.clear()
 
+        for index, record in enumerate(
+            records,
+            start=1
+        ):
 
-    # =========================================================
-    # FIXTURE ACCESS
-    # =========================================================
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"Fixture record {index} "
+                    "is not a JSON object"
+                )
 
+            fixture = self.create_fixture(
+                record,
+                index
+            )
 
-    def get_fixture(
-            self,
-            fixture_id: int
-    ) -> Optional[Fixture]:
-
-
-        return self.fixtures.get(
-            fixture_id
-        )
-
-
-
-    def get_season_fixtures(
-            self,
-            season: int
-    ) -> List[Fixture]:
-
-
-        return [
-
-            fixture
-
-            for fixture in self.fixtures.values()
-
-            if fixture.season == season
-
-        ]
-
-
-
-    def get_round_fixtures(
-            self,
-            round_number: int
-    ) -> List[Fixture]:
-
-
-        return [
-
-            fixture
-
-            for fixture in self.fixtures.values()
-
-            if fixture.round_number ==
-            round_number
-
-        ]
-
-
-
-    # =========================================================
-    # FIXTURE STATUS
-    # =========================================================
-
-
-    def complete_fixture(
-            self,
-            fixture_id: int
-    ):
-
-
-        fixture = self.get_fixture(
-
-            fixture_id
-
-        )
-
-
-        if fixture and fixture.completed:
-
-
-            self.completed.append(
+            self.fixtures.append(
                 fixture
             )
 
+        log.info(
+            "Loaded %s fixtures from %s",
+            len(self.fixtures),
+            path
+        )
 
-            return True
+        return self.fixtures
 
+    # --------------------------------------------------
+    # CREATE FIXTURE
+    # --------------------------------------------------
 
-        return False
+    def create_fixture(
+        self,
+        data,
+        index: int
+    ) -> Fixture:
+        """Create a Fixture using the actual 1976 JSON fields."""
 
+        meeting_date = str(
+            data.get(
+                "Meeting Date",
+                ""
+            )
+        ).strip()
 
+        home_team = str(
+            data.get(
+                "Home Team",
+                ""
+            )
+        ).strip()
 
-    def remaining_fixtures(
-            self,
-            season=None
-    ):
+        away_team = str(
+            data.get(
+                "Away Team",
+                ""
+            )
+        ).strip()
 
+        meeting_type = str(
+            data.get(
+                "Meeting Type",
+                ""
+            )
+        ).strip()
 
-        fixtures = self.fixtures.values()
+        if not meeting_date:
+            raise ValueError(
+                f"Fixture {index} has no Meeting Date"
+            )
 
+        if not home_team:
+            raise ValueError(
+                f"Fixture {index} has no Home Team"
+            )
 
-        if season:
+        if not away_team:
+            raise ValueError(
+                f"Fixture {index} has no Away Team"
+            )
 
+        return Fixture(
 
-            fixtures = [
+            fixture_id=f"FIX-{index:04d}",
 
-                f
+            meeting_date=meeting_date,
 
-                for f in fixtures
+            home_team=home_team,
 
-                if f.season == season
+            away_team=away_team,
 
-            ]
+            meeting_type=meeting_type,
+        )
 
+    # --------------------------------------------------
+    # LOOKUPS
+    # --------------------------------------------------
 
+    def get_fixture(
+        self,
+        fixture_id
+    ) -> Optional[Fixture]:
+
+        target = str(
+            fixture_id
+        )
+
+        for fixture in self.fixtures:
+
+            if fixture.fixture_id == target:
+                return fixture
+
+        return None
+
+    # --------------------------------------------------
+
+    def get_all_fixtures(
+        self
+    ) -> List[Fixture]:
+
+        return list(
+            self.fixtures
+        )
+
+    # --------------------------------------------------
+
+    def get_fixtures_by_team(
+        self,
+        team_name
+    ) -> List[Fixture]:
+
+        target = str(
+            team_name
+        ).strip().casefold()
 
         return [
 
             fixture
 
-            for fixture in fixtures
+            for fixture in self.fixtures
 
-            if not fixture.completed
-
+            if (
+                fixture.home_team.casefold()
+                == target
+                or
+                fixture.away_team.casefold()
+                == target
+            )
         ]
 
+    # --------------------------------------------------
 
+    def get_home_fixtures(
+        self,
+        team_name
+    ) -> List[Fixture]:
 
-    # =========================================================
-    # POSTPONEMENT SYSTEM
-    # =========================================================
+        target = str(
+            team_name
+        ).strip().casefold()
 
+        return [
 
-    def postpone_fixture(
-            self,
-            fixture_id: int,
-            reason="Weather"
-    ):
+            fixture
 
+            for fixture in self.fixtures
 
-        fixture = self.get_fixture(
+            if fixture.home_team.casefold()
+            == target
+        ]
 
-            fixture_id
+    # --------------------------------------------------
 
+    def get_away_fixtures(
+        self,
+        team_name
+    ) -> List[Fixture]:
+
+        target = str(
+            team_name
+        ).strip().casefold()
+
+        return [
+
+            fixture
+
+            for fixture in self.fixtures
+
+            if fixture.away_team.casefold()
+            == target
+        ]
+
+    # --------------------------------------------------
+    # DATE LOOKUPS
+    # --------------------------------------------------
+
+    def get_fixtures_by_date(
+        self,
+        meeting_date
+    ) -> List[Fixture]:
+
+        target = str(
+            meeting_date
+        ).strip()
+
+        return [
+
+            fixture
+
+            for fixture in self.fixtures
+
+            if fixture.meeting_date == target
+        ]
+
+    # --------------------------------------------------
+
+    def get_fixtures_by_date_range(
+        self,
+        start_date,
+        end_date
+    ) -> List[Fixture]:
+
+        start = self._parse_date(
+            start_date
         )
 
-
-        if not fixture:
-
-            return False
-
-
-
-        self.postponed.append(
-
-            {
-
-                "fixture":
-
-                    fixture,
-
-                "reason":
-
-                    reason
-
-            }
-
+        end = self._parse_date(
+            end_date
         )
 
+        results = []
 
-        return True
+        for fixture in self.fixtures:
 
-
-
-    def rearrange_fixture(
-            self,
-            fixture_id: int,
-            new_round: int
-    ):
-
-
-        fixture = self.get_fixture(
-
-            fixture_id
-
-        )
-
-
-        if fixture:
-
-
-            fixture.round_number = new_round
-
-
-            return True
-
-
-
-        return False
-
-
-
-    # =========================================================
-    # FIXTURE GENERATOR
-    # =========================================================
-
-
-    def generate_league_schedule(
-            self,
-            clubs: List,
-            season: int
-    ):
-
-
-        """
-        Creates a simple home and away
-        league fixture list.
-
-        """
-
-        fixture_id = (
-
-            max(
-                self.fixtures.keys(),
-                default=0
+            fixture_date = self._parse_date(
+                fixture.meeting_date
             )
 
-            + 1
+            if (
+                start
+                <= fixture_date
+                <= end
+            ):
 
-        )
-
-
-        round_number = 1
-
-
-
-        for home in clubs:
-
-
-            for away in clubs:
-
-
-                if home.id != away.id:
-
-
-                    fixture = Fixture(
-
-                        id=fixture_id,
-
-                        season=season,
-
-                        round_number=round_number,
-
-                        home_club_id=home.id,
-
-                        away_club_id=away.id,
-
-                        venue_id=0
-
-                    )
-
-
-                    self.fixtures[fixture_id] = fixture
-
-
-                    fixture_id += 1
-
-
-                    round_number += 1
-
-
-
-        return self.fixtures
-
-
-
-    # =========================================================
-    # CALENDAR REPORT
-    # =========================================================
-
-
-    def calendar_summary(
-            self,
-            season
-    ):
-
-
-        fixtures = self.get_season_fixtures(
-
-            season
-
-        )
-
-
-        return {
-
-
-            "season":
-
-                season,
-
-
-            "total":
-
-                len(fixtures),
-
-
-            "completed":
-
-                len(
-
-                    [
-
-                        f
-
-                        for f in fixtures
-
-                        if f.completed
-
-                    ]
-
-                ),
-
-
-            "remaining":
-
-                len(
-
-                    [
-
-                        f
-
-                        for f in fixtures
-
-                        if not f.completed
-
-                    ]
-
+                results.append(
+                    fixture
                 )
 
-        }
+        return results
 
+    # --------------------------------------------------
+    # COMPETITION LOOKUPS
+    # --------------------------------------------------
 
+    def get_fixtures_by_type(
+        self,
+        meeting_type
+    ) -> List[Fixture]:
 
-# =============================================================
-# TEST MODULE
-# =============================================================
+        target = str(
+            meeting_type
+        ).strip().casefold()
 
+        return [
 
-if __name__ == "__main__":
+            fixture
 
+            for fixture in self.fixtures
 
-    manager = FixtureManager()
+            if fixture.meeting_type.casefold()
+            == target
+        ]
 
+    # --------------------------------------------------
+    # RESULTS
+    # --------------------------------------------------
 
-    test_fixture = [
+    def record_result(
+        self,
+        fixture_id,
+        home_score,
+        away_score
+    ):
 
-        {
-
-            "id":1,
-
-            "season":1976,
-
-            "round":1,
-
-            "home_club_id":5,
-
-            "away_club_id":8,
-
-            "venue_id":3
-
-        }
-
-    ]
-
-
-    manager.load_fixtures(
-        test_fixture
-    )
-
-
-    print(
-
-        manager.calendar_summary(
-            1976
+        fixture = self.get_fixture(
+            fixture_id
         )
 
-    )
+        if fixture is None:
+            raise ValueError(
+                f"Unknown fixture: {fixture_id}"
+            )
+
+        fixture.home_score = int(
+            home_score
+        )
+
+        fixture.away_score = int(
+            away_score
+        )
+
+        fixture.completed = True
+
+    # --------------------------------------------------
+    # DATE SORTING
+    # --------------------------------------------------
+
+    def get_fixtures_sorted(
+        self
+    ) -> List[Fixture]:
+
+        return sorted(
+            self.fixtures,
+            key=lambda fixture:
+                self._parse_date(
+                    fixture.meeting_date
+                )
+        )
+
+    # --------------------------------------------------
+    # INTERNAL DATE PARSER
+    # --------------------------------------------------
+
+    @staticmethod
+    def _parse_date(
+        value
+    ):
+
+        if isinstance(
+            value,
+            datetime
+        ):
+            return value
+
+        return datetime.strptime(
+            str(value).strip(),
+            "%d/%m/%Y"
+        )
+
+    # --------------------------------------------------
+    # EXPORT
+    # --------------------------------------------------
+
+    def export_database(
+        self,
+        file_path
+    ):
+
+        output = []
+
+        for fixture in self.fixtures:
+
+            output.append(
+                {
+                    "Meeting Date":
+                        fixture.meeting_date,
+
+                    "Home Team":
+                        fixture.home_team,
+
+                    "Away Team":
+                        fixture.away_team,
+
+                    "Meeting Type":
+                        fixture.meeting_type,
+                }
+            )
+
+        with open(
+            file_path,
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            json.dump(
+                output,
+                f,
+                indent=2,
+                ensure_ascii=False
+            )
+
+
+fixture_database_manager = (
+    FixtureDatabaseManager()
+)

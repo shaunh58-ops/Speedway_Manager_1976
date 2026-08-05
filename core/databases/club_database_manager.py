@@ -1,16 +1,17 @@
 """
 British League Speedway Manager
 Club Database Manager
-Version: 1.0
 
-Designed specifically for the Historical Club Database v1.1
+Version: 0.3.1
+
+Loads and manages the historical 1976 club database.
+Aligned with the actual clubs_1976.json schema.
 """
 
 from __future__ import annotations
 
 import json
-import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -19,204 +20,433 @@ from core.logger import get_logger
 log = get_logger("ClubDatabaseManager")
 
 
-HOME_ADVANTAGE = {
-    "Very High": 1.08,
-    "High": 1.05,
-    "Medium-High": 1.035,
-    "Medium": 1.02,
-    "Low-Medium": 1.01,
-    "Low": 1.00,
-}
-
-
 @dataclass
 class Club:
+    """A British League club from the 1976 database."""
 
     club_id: str
-
     name: str
-
     nickname: str
-
     stadium: str
 
-    stadium_capacity: int
+    stadium_capacity: int = 0
+    average_attendance: int = 0
+    track_size: str = ""
+    race_night: str = ""
 
-    average_attendance: int
+    home_advantage_modifier: str = ""
+    starting_bank_balance: float = 0.0
+    board_expectations: str = ""
+    fan_loyalty: str = ""
+    rivals: str = ""
 
-    track_size: int
+    # Runtime game values
+    current_bank_balance: float = 0.0
+    morale: int = 50
+    active: bool = True
 
-    race_night: str
 
-    home_advantage_text: str
+def _to_int(
+    value,
+    default: int = 0
+) -> int:
+    """Safely convert a value to an integer."""
 
-    home_advantage: float
+    if value is None or value == "":
+        return default
 
-    starting_bank_balance: int
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
 
-    board_expectations: str
 
-    fan_loyalty: str
+def _to_float(
+    value,
+    default: float = 0.0
+) -> float:
+    """Safely convert a value to a float."""
 
-    rivals: List[str] = field(default_factory=list)
+    if value is None or value == "":
+        return default
 
-    riders: List[str] = field(default_factory=list)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 class ClubDatabaseManager:
+    """Load and manage the historical 1976 club database."""
 
-    def __init__(self, database_path=None):
+    def __init__(
+        self,
+        database_path=None
+    ):
 
-        self.database_path = database_path
+        self.database_path = (
+            Path(database_path)
+            if database_path
+            else None
+        )
 
         self.clubs: Dict[str, Club] = {}
 
-    def load_database(self, file_path=None):
+    # --------------------------------------------------
+    # DATABASE LOADING
+    # --------------------------------------------------
 
-        path = Path(file_path or self.database_path)
+    def load_database(
+        self,
+        file_path=None
+    ):
+        """Load clubs_1976.json."""
+
+        path_value = (
+            file_path
+            or self.database_path
+        )
+
+        if path_value is None:
+            raise ValueError(
+                "No club database path was supplied"
+            )
+
+        path = Path(path_value)
 
         if not path.exists():
             raise FileNotFoundError(path)
 
-        with open(path, "r", encoding="utf-8") as f:
-            records = json.load(f)
+        with path.open(
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            database = json.load(f)
+
+        if not isinstance(database, dict):
+            raise ValueError(
+                "Club database root must be a JSON object"
+            )
+
+        records = database.get("data")
+
+        if not isinstance(records, list):
+            raise ValueError(
+                "Club database must contain a 'data' list"
+            )
 
         self.clubs.clear()
 
-        for record in records:
+        for index, record in enumerate(
+            records,
+            start=1
+        ):
+
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"Club record {index} is not a JSON object"
+                )
 
             club = self.create_club(record)
 
+            if not club.club_id:
+                raise ValueError(
+                    f"Club record {index} has no 'ID No.' value"
+                )
+
+            if club.club_id in self.clubs:
+                raise ValueError(
+                    f"Duplicate club ID: {club.club_id}"
+                )
+
             self.clubs[club.club_id] = club
 
-        log.info("Loaded %s clubs", len(self.clubs))
+        log.info(
+            "Loaded %s clubs from %s",
+            len(self.clubs),
+            path
+        )
 
         return self.clubs
 
-    def create_club(self, data):
+    # --------------------------------------------------
+    # CREATE CLUB
+    # --------------------------------------------------
 
-        track = self._parse_int(data.get("Track Size.", 0))
+    def create_club(
+        self,
+        data
+    ) -> Club:
+        """Create a Club using the actual 1976 JSON fields."""
 
-        capacity = self._parse_int(data.get("Stadium Capacity.", 0))
-
-        attendance = self._parse_int(data.get("Average Attendance.", 0))
-
-        balance = self._parse_money(data.get("Starting Bank Balance.", 0))
-
-        rivals = self._parse_rivals(data.get("Rivals", ""))
-
-        modifier_text = data.get("Home Advantage Modifier.", "Medium")
+        starting_balance = _to_float(
+            data.get(
+                "Starting Bank Balance."
+            )
+        )
 
         return Club(
 
-            club_id=str(data.get("ID No.", "")),
+            club_id=str(
+                data.get(
+                    "ID No.",
+                    ""
+                )
+            ).strip(),
 
-            name=data.get("Club", ""),
+            name=str(
+                data.get(
+                    "Club",
+                    ""
+                )
+            ).strip(),
 
-            nickname=data.get("Nickname", ""),
+            nickname=str(
+                data.get(
+                    "Nickname",
+                    ""
+                )
+            ).strip(),
 
-            stadium=data.get("Stadium", ""),
+            stadium=str(
+                data.get(
+                    "Stadium",
+                    ""
+                )
+            ).strip(),
 
-            stadium_capacity=capacity,
-
-            average_attendance=attendance,
-
-            track_size=track,
-
-            race_night=data.get("Race Night", ""),
-
-            home_advantage_text=modifier_text,
-
-            home_advantage=HOME_ADVANTAGE.get(
-                modifier_text,
-                1.02
+            stadium_capacity=_to_int(
+                data.get(
+                    "Stadium Capacity."
+                )
             ),
 
-            starting_bank_balance=balance,
-
-            board_expectations=data.get(
-                "Board Expectations.",
-                ""
+            average_attendance=_to_int(
+                data.get(
+                    "Average Attendance."
+                )
             ),
 
-            fan_loyalty=data.get(
-                "Fan Loyalty.",
-                ""
-            ),
+            track_size=str(
+                data.get(
+                    "Track Size.",
+                    ""
+                )
+            ).strip(),
 
-            rivals=rivals,
+            race_night=str(
+                data.get(
+                    "Race Night",
+                    ""
+                )
+            ).strip(),
 
+            home_advantage_modifier=str(
+                data.get(
+                    "Home Advantage Modifier.",
+                    ""
+                )
+            ).strip(),
+
+            starting_bank_balance=starting_balance,
+
+            board_expectations=str(
+                data.get(
+                    "Board Expectations.",
+                    ""
+                )
+            ).strip(),
+
+            fan_loyalty=str(
+                data.get(
+                    "Fan Loyalty.",
+                    ""
+                )
+            ).strip(),
+
+            rivals=str(
+                data.get(
+                    "Rivals.",
+                    ""
+                )
+            ).strip(),
+
+            current_bank_balance=starting_balance,
         )
 
-    def get_club(self, club_id):
+    # --------------------------------------------------
+    # LOOKUPS
+    # --------------------------------------------------
 
-        return self.clubs.get(str(club_id))
+    def get_club(
+        self,
+        club_id
+    ) -> Optional[Club]:
 
-    def get_club_by_name(self, name):
+        return self.clubs.get(
+            str(club_id)
+        )
+
+    # --------------------------------------------------
+
+    def get_club_by_name(
+        self,
+        name
+    ) -> Optional[Club]:
+
+        target = str(
+            name
+        ).strip().casefold()
 
         for club in self.clubs.values():
 
-            if club.name.lower() == name.lower():
-
+            if club.name.casefold() == target:
                 return club
 
         return None
 
-    def get_active_clubs(self):
+    # --------------------------------------------------
 
-        return sorted(
+    def get_clubs(self) -> List[Club]:
 
-            self.clubs.values(),
-
-            key=lambda c: c.name
-
+        return list(
+            self.clubs.values()
         )
 
-    def assign_riders(self, rider_database):
+    # --------------------------------------------------
+    # FINANCE
+    # --------------------------------------------------
 
-        for club in self.clubs.values():
+    def update_balance(
+        self,
+        club_id,
+        amount
+    ):
 
-            club.riders = []
+        club = self.get_club(
+            club_id
+        )
 
-        for rider in rider_database.values():
+        if club is None:
+            return
 
-            club = self.get_club_by_name(rider.club)
+        club.current_bank_balance += _to_float(
+            amount
+        )
 
-            if club:
+    # --------------------------------------------------
 
-                club.riders.append(rider.rider_id)
+    def get_balance(
+        self,
+        club_id
+    ) -> float:
 
-    @staticmethod
-    def _parse_int(value):
+        club = self.get_club(
+            club_id
+        )
 
-        if value is None:
+        if club is None:
+            return 0.0
+
+        return club.current_bank_balance
+
+    # --------------------------------------------------
+    # ATTENDANCE
+    # --------------------------------------------------
+
+    def get_average_attendance(
+        self,
+        club_id
+    ) -> int:
+
+        club = self.get_club(
+            club_id
+        )
+
+        if club is None:
             return 0
 
-        value = str(value)
+        return club.average_attendance
 
-        digits = re.sub(r"[^\d]", "", value)
+    # --------------------------------------------------
+    # RIVALS
+    # --------------------------------------------------
 
-        return int(digits) if digits else 0
+    def get_rivals(
+        self,
+        club_id
+    ) -> List[str]:
 
-    @staticmethod
-    def _parse_money(value):
+        club = self.get_club(
+            club_id
+        )
 
-        return ClubDatabaseManager._parse_int(value)
-
-    @staticmethod
-    def _parse_rivals(value):
-
-        if not value:
+        if club is None:
             return []
 
-        if isinstance(value, list):
-            return value
+        if not club.rivals:
+            return []
 
         return [
             rival.strip()
-            for rival in str(value).split(",")
+            for rival in club.rivals.split(",")
             if rival.strip()
         ]
+
+    # --------------------------------------------------
+    # EXPORT
+    # --------------------------------------------------
+
+    def export_database(
+        self,
+        file_path
+    ):
+
+        records = []
+
+        for club in self.clubs.values():
+
+            records.append(
+                {
+                    "ID No.": club.club_id,
+                    "Club": club.name,
+                    "Nickname": club.nickname,
+                    "Stadium": club.stadium,
+                    "Stadium Capacity.": club.stadium_capacity,
+                    "Average Attendance.": club.average_attendance,
+                    "Track Size.": club.track_size,
+                    "Race Night": club.race_night,
+                    "Home Advantage Modifier.": (
+                        club.home_advantage_modifier
+                    ),
+                    "Starting Bank Balance.": (
+                        club.starting_bank_balance
+                    ),
+                    "Board Expectations.": (
+                        club.board_expectations
+                    ),
+                    "Fan Loyalty.": club.fan_loyalty,
+                    "Rivals.": club.rivals,
+                }
+            )
+
+        output = {
+            "data": records
+        }
+
+        with open(
+            file_path,
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            json.dump(
+                output,
+                f,
+                indent=2,
+                ensure_ascii=False
+            )
 
 
 club_database_manager = ClubDatabaseManager()
