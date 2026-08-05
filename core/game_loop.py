@@ -1,218 +1,171 @@
 """
-Speedway Game Engine
+British League Speedway Manager
 
-Game Loop Module
+Game Loop
 
-Version: 1.0
+Version: 0.3.2
 
-Controls the continuous simulation
-of the Speedway world.
-
+Controls the progression of the 1976 season.
 """
-
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Callable, List
 
-
-from game_state_manager import GameStateManager
-from event_bus import EventBus, Events
-from logger import GameLogger
+from core.logger import get_logger
+from core.game_state_manager import GameStateManager
 
 
-
-# ==========================================================
-# DATA STRUCTURE
-# ==========================================================
+log = get_logger("GameLoop")
 
 
-@dataclass(slots=True)
+@dataclass
 class LoopSettings:
 
-
-    simulation_speed: str = "Normal"
-
-
     paused: bool = False
-
-
     auto_run: bool = False
 
 
-
-# ==========================================================
-# GAME LOOP
-# ==========================================================
-
-
 class GameLoop:
-
+    """
+    Advances the historical Speedway season.
+    """
 
     def __init__(
-            self,
-            game_state: GameStateManager,
-            event_bus: EventBus,
-            logger: GameLogger
+        self,
+        game_state: GameStateManager,
     ):
-
 
         self.game_state = game_state
 
-        self.event_bus = event_bus
-
-        self.logger = logger
-
-
         self.settings = LoopSettings()
-
 
         self.running = False
 
-
         self.tasks: List[Callable] = []
 
+        self.processed_fixtures = []
 
 
-    # ======================================================
-    # REGISTER TASK
-    # ======================================================
+    # --------------------------------------------------
+    # TASKS
+    # --------------------------------------------------
+
+    def register_task(self, task):
+
+        self.tasks.append(task)
 
 
-    def register_task(
-            self,
-            task
-    ):
-
-
-        self.tasks.append(
-
-            task
-
-        )
-
-
-
-    # ======================================================
-    # START LOOP
-    # ======================================================
-
+    # --------------------------------------------------
+    # CONTROL
+    # --------------------------------------------------
 
     def start(self):
 
-
         self.running = True
 
-
-        self.logger.info(
-
+        log.info(
             "Game loop started"
-
         )
-
-
-
-    # ======================================================
-    # STOP LOOP
-    # ======================================================
 
 
     def stop(self):
 
-
         self.running = False
 
-
-        self.logger.info(
-
+        log.info(
             "Game loop stopped"
-
         )
 
 
-
-    # ======================================================
+    # --------------------------------------------------
     # DAILY TICK
-    # ======================================================
-
+    # --------------------------------------------------
 
     def tick(self):
 
-
         if not self.running:
-
             return
-
-
 
         if self.settings.paused:
-
             return
 
 
-
-        self.logger.debug(
-
-            "Processing daily simulation tick"
-
-        )
-
-
+        self.process_daily_fixtures()
 
         self.process_tasks()
 
-
-        self.advance_time()
-
+        self.advance_date()
 
 
-    # ======================================================
-    # PROCESS SYSTEM TASKS
-    ======================================================
+    # --------------------------------------------------
+    # FIXTURES
+    # --------------------------------------------------
 
+    def process_daily_fixtures(self):
+
+        current_date = (
+            self.game_state.state.current_date
+        )
+
+
+        todays_fixtures = [
+
+            fixture
+
+            for fixture
+
+            in self.game_state.state.fixtures.values()
+
+            if fixture.meeting_date == current_date
+
+        ]
+
+
+        for fixture in todays_fixtures:
+
+            log.info(
+                "TODAY: %s vs %s",
+                fixture.home_team,
+                fixture.away_team,
+            )
+
+
+            self.processed_fixtures.append(
+                fixture.fixture_id
+            )
+
+
+    # --------------------------------------------------
+    # TASK PROCESSING
+    # --------------------------------------------------
 
     def process_tasks(self):
 
-
         for task in self.tasks:
-
 
             try:
 
-
                 task()
 
+            except Exception:
 
-
-            except Exception as error:
-
-
-                self.logger.exception(
-
-                    "Game task failed",
-
-                    error
-
+                log.exception(
+                    "Game task failed"
                 )
 
 
+    # --------------------------------------------------
+    # DATE ADVANCEMENT
+    # --------------------------------------------------
 
-    # ======================================================
-    # ADVANCE DATE
-    ======================================================
-
-
-    def advance_time(self):
-
+    def advance_date(self):
 
         current = datetime.strptime(
-
             self.game_state.state.current_date,
-
-            "%Y-%m-%d"
-
+            "%d/%m/%Y",
         )
 
 
@@ -220,138 +173,73 @@ class GameLoop:
 
 
         self.game_state.update_date(
-
-            current.strftime(
-
-                "%Y-%m-%d"
-
-            )
-
+            current.strftime("%d/%m/%Y")
         )
 
 
-        self.event_bus.publish(
-
-            Events.GAME_LOADED,
-
-            {
-
-                "date":
-
-                current.strftime(
-
-                    "%Y-%m-%d"
-
-                )
-
-            }
-
-        )
-
-
-
-    # ======================================================
+    # --------------------------------------------------
     # RUN DAYS
-    ======================================================
-
+    # --------------------------------------------------
 
     def run_days(
-            self,
-            days
+        self,
+        days: int,
     ):
-
 
         self.start()
 
 
-
         for _ in range(days):
 
-
             self.tick()
-
 
 
         self.stop()
 
 
-
-    # ======================================================
+    # --------------------------------------------------
     # STATUS
-    ======================================================
-
+    # --------------------------------------------------
 
     def status(self):
 
-
         return {
 
-
             "running":
-
-            self.running,
-
+                self.running,
 
             "date":
+                self.game_state.state.current_date,
 
-            self.game_state.state.current_date,
-
+            "fixtures_processed":
+                len(self.processed_fixtures),
 
             "tasks":
-
-            len(self.tasks)
-
+                len(self.tasks),
         }
-
-
-
-# ==========================================================
-# TEST MODULE
-# ==========================================================
 
 
 if __name__ == "__main__":
 
-
-    from game_state_manager import game_state
-
-    from event_bus import event_bus
-
-    from logger import game_logger
+    from core.world_builder import WorldBuilder
 
 
+    world = WorldBuilder().build()
 
-    game_state.create_new_game(
 
-        1976,
+    state = GameStateManager(world)
 
+
+    state.create_new_game(
         "Player",
-
-        1
-
+        "BEL001",
     )
 
 
-    loop = GameLoop(
-
-        game_state,
-
-        event_bus,
-
-        game_logger
-
-    )
+    loop = GameLoop(state)
 
 
-    loop.run_days(
-
-        5
-
-    )
+    loop.run_days(10)
 
 
-    print(
-
-        loop.status()
-
-    )
+    print(loop.status())
